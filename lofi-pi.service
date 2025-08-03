@@ -1,0 +1,23 @@
+[Unit]
+Description=LoFi Pi Spotify Controller
+After=network-online.target
+Wants=network-online.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/lofi-pi
+Environment=PATH=/home/pi/lofi-pi/venv/bin
+ExecStart=/home/pi/lofi-pi/venv/bin/python /home/pi/lofi-pi/main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

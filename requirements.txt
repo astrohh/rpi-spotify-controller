@@ -1,0 +1,15 @@
+# Requirements for LoFi Pi - Raspberry Pi Zero Spotify Controller
+
+# Core dependencies
+requests>=2.25.1
+Pillow>=8.2.0
+
+# Raspberry Pi GPIO libraries
+RPi.GPIO>=0.7.1
+spidev>=3.5
+
+# Optional: For better image processing
+numpy>=1.21.0
+
+# Optional: For system service management
+systemd-python>=234
