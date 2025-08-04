@@ -5,7 +5,7 @@ Handles mechanical switches and rotary encoder input using RPi.GPIO
 
 import time
 import threading
-import RPi.GPIO as GPIOGPIO as GPIO
+import RPi.GPIO as GPIO
 
 
 class Controls:
