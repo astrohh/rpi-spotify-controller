@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class RaspberryPi:
-    # Pin definition
-    RST_PIN = 11
-    DC_PIN = 22
-    CS_PIN = 24
-    BUSY_PIN = 18
-    PWR_PIN = 1
-    MOSI_PIN = 19
-    SCLK_PIN = 23
+    # Pin definition - BCM GPIO numbers
+    RST_PIN = 17  # Physical pin 11 -> BCM GPIO 17
+    DC_PIN = 25  # Physical pin 22 -> BCM GPIO 25
+    CS_PIN = 8  # Physical pin 24 -> BCM GPIO 8
+    BUSY_PIN = 24  # Physical pin 18 -> BCM GPIO 24
+    PWR_PIN = 18  # Physical pin 12 -> BCM GPIO 18 (or use 3.3V rail)
+    MOSI_PIN = 10  # Physical pin 19 -> BCM GPIO 10 (SPI MOSI)
+    SCLK_PIN = 11  # Physical pin 23 -> BCM GPIO 11 (SPI SCLK)
 
     def __init__(self):
         import spidev
@@ -56,13 +56,13 @@ class RaspberryPi:
         if pin == self.BUSY_PIN:
             return self.GPIO_BUSY_PIN.value
         elif pin == self.RST_PIN:
-            return self.RST_PIN.value
+            return self.GPIO_RST_PIN.value
         elif pin == self.DC_PIN:
-            return self.DC_PIN.value
+            return self.GPIO_DC_PIN.value
         # elif pin == self.CS_PIN:
-        #     return self.CS_PIN.value
+        #     return self.GPIO_CS_PIN.value
         elif pin == self.PWR_PIN:
-            return self.PWR_PIN.value
+            return self.GPIO_PWR_PIN.value
 
     def delay_ms(self, delaytime):
         time.sleep(delaytime / 1000.0)
