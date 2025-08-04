@@ -15,7 +15,7 @@ class RaspberryPi:
     DC_PIN = 25  # Physical pin 22 -> BCM GPIO 25
     CS_PIN = 8  # Physical pin 24 -> BCM GPIO 8
     BUSY_PIN = 24  # Physical pin 18 -> BCM GPIO 24
-    PWR_PIN = 18  # Physical pin 12 -> BCM GPIO 18 (or use 3.3V rail)
+    # PWR_PIN = 18  # Physical pin 12 -> BCM GPIO 18 (or use 3.3V rail)
     MOSI_PIN = 10  # Physical pin 19 -> BCM GPIO 10 (SPI MOSI)
     SCLK_PIN = 11  # Physical pin 23 -> BCM GPIO 11 (SPI SCLK)
 
