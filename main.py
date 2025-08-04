@@ -9,6 +9,7 @@ import json
 import signal
 import requests
 import threading
+import RPi.GPIO as GPIO
 from pathlib import Path
 
 from config import Config
@@ -16,7 +17,7 @@ from controls import Controls
 
 # Import custom modules
 from spotify_api import SpotifyAPI
-from eink_display import EInkDisplay
+from eink_display import EInkDisplayInkDisplay
 
 
 class LoFiPi:
@@ -26,12 +27,26 @@ class LoFiPi:
         # Load configuration
         self.config = Config()
 
-        # Initialize hardware components
-        self.display = EInkDisplay()
+        # Initialize GPIO once for the entire application
+        try:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setwarnings(False)
+            gpio_initialized = True
+            print("GPIO initialized")
+        except Exception as e:
+            print(f"GPIO initialization failed: {e}")
+            gpio_initialized = False
+
+        # Initialize hardware components with shared GPIO
+        self.display = EInkDisplay(gpio_initialized=gpio_initialized)
         print("E-ink display initialized")
 
         try:
-            self.controls = Controls(self.on_button_press, self.on_rotary_change)
+            self.controls = Controls(
+                self.on_button_press,
+                self.on_rotary_change,
+                gpio_initialized=gpio_initialized,
+            )
             print("Controls initialized successfully")
         except Exception as e:
             print(f"Warning: Controls initialization failed: {e}")
@@ -65,6 +80,7 @@ class LoFiPi:
         print("\nShutting down LoFi Pi...")
         self.running = False
         self.display.cleanup()
+        GPIO.cleanup()
         sys.exit(0)
 
     def update_loop(self):
@@ -208,6 +224,7 @@ class LoFiPi:
         finally:
             self.running = False
             self.display.cleanup()
+            GPIO.cleanup()
             if self.controls:
                 self.controls.cleanup()
 

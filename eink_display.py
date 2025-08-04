@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 class EInkDisplay:
-    def __init__(self):
+    def __init__(self, gpio_initialized=False):
         # Display dimensions
         self.width = 250
         self.height = 122
@@ -24,9 +24,12 @@ class EInkDisplay:
         self.CS_PIN = 8
         self.BUSY_PIN = 24
 
-        # Initialize GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
+        # Initialize GPIO only if not already done
+        if not gpio_initialized:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setwarnings(False)
+
+        # Setup display-specific pins
         GPIO.setup(self.RST_PIN, GPIO.OUT)
         GPIO.setup(self.DC_PIN, GPIO.OUT)
         GPIO.setup(self.CS_PIN, GPIO.OUT)

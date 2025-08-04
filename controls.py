@@ -9,7 +9,7 @@ import RPi.GPIO as GPIO
 
 
 class Controls:
-    def __init__(self, button_callback, rotary_callback):
+    def __init__(self, button_callback, rotary_callback, gpio_initialized=False):
         self.button_callback = button_callback
         self.rotary_callback = rotary_callback
 
@@ -25,7 +25,7 @@ class Controls:
         self.ROTARY_SW_PIN = 13
 
         # Initialize GPIO
-        self._init_gpio()
+        self._init_gpio(gpio_initialized)
 
         # Button debouncing
         self.button_states = {
@@ -56,17 +56,18 @@ class Controls:
 
         print("Controls initialized with interrupt-based detection")
 
-    def _init_gpio(self):
+    def _init_gpio(self, gpio_initialized):
         """Initialize GPIO with proper cleanup and error handling"""
-        try:
-            # Clean up any existing GPIO setup
-            GPIO.cleanup()
-        except:
-            pass
+        if not gpio_initialized:
+            try:
+                # Clean up any existing GPIO setup
+                GPIO.cleanup()
+            except:
+                pass
 
-        # Set GPIO mode and disable warnings
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
+            # Set GPIO mode and disable warnings
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setwarnings(False)
 
         # Setup button pins with pull-up resistors
         GPIO.setup(self.PLAY_PAUSE_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
