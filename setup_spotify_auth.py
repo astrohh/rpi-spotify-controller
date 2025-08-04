@@ -5,6 +5,7 @@ Run this on your computer to generate tokens for the Pico
 """
 
 import json
+import time
 import base64
 import requests
 import threading
@@ -12,7 +13,7 @@ import webbrowser
 import http.server
 import urllib.parse
 import socketserver
-from urllib.parse import urlparse, parse_qs urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlparse, parse_qs
 
 
 class SpotifyAuth:
@@ -77,7 +78,7 @@ class SpotifyAuth:
 
         # Start server on port 8888
         with socketserver.TCPServer(("", 8888), CallbackHandler) as httpd:
-            print("Callback server started on http://localhost:8888")
+            print("Callback server started on http://127.0.0.1:8888/callback")
 
             # Wait for the callback
             while self.auth_code is None:
@@ -112,11 +113,13 @@ class SpotifyAuth:
 
         if response.status_code == 200:
             token_data = response.json()
+            expires_in = token_data.get("expires_in", 3600)
+            current_time = int(time.time())
+
             return {
                 "access_token": token_data["access_token"],
                 "refresh_token": token_data["refresh_token"],
-                "expires_at": token_data.get("expires_in", 3600)
-                + int(requests.utils.default_headers()["User-Agent"].split()[-1]),
+                "expires_at": current_time + expires_in,
             }
         else:
             raise Exception(
@@ -131,7 +134,7 @@ def main():
     # Get credentials from user
     client_id = input("Enter your Spotify Client ID: ").strip()
     client_secret = input("Enter your Spotify Client Secret: ").strip()
-    redirect_uri = "http://localhost:8888/callback"
+    redirect_uri = "http://127.0.0.1:8888/callback"
 
     if not client_id or not client_secret:
         print("Error: Client ID and Client Secret are required!")

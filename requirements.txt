@@ -12,4 +12,4 @@ spidev>=3.5
 numpy>=1.21.0
 
 # Optional: For system service management
-systemd-python>=234
+# systemd-python>=234

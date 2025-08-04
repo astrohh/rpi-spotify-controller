@@ -13,6 +13,7 @@ from pathlib import Path
 
 from config import Config
 from controls import Controls
+
 # Import custom modules
 from spotify_api import SpotifyAPI
 from eink_display import EInkDisplay
@@ -27,7 +28,15 @@ class LoFiPi:
 
         # Initialize hardware components
         self.display = EInkDisplay()
-        self.controls = Controls(self.on_button_press, self.on_rotary_change)
+        print("E-ink display initialized")
+
+        try:
+            self.controls = Controls(self.on_button_press, self.on_rotary_change)
+            print("Controls initialized successfully")
+        except Exception as e:
+            print(f"Warning: Controls initialization failed: {e}")
+            print("LoFi Pi will continue without physical controls")
+            self.controls = None
 
         # Initialize Spotify API
         self.spotify = SpotifyAPI(
@@ -189,8 +198,9 @@ class LoFiPi:
         # Main control loop
         try:
             while self.running:
-                # Process control inputs
-                self.controls.update()
+                # Process control inputs (if controls are available)
+                if self.controls:
+                    self.controls.update()
                 time.sleep(0.05)  # 50ms polling rate
 
         except KeyboardInterrupt:
@@ -198,6 +208,8 @@ class LoFiPi:
         finally:
             self.running = False
             self.display.cleanup()
+            if self.controls:
+                self.controls.cleanup()
 
         return True
 
