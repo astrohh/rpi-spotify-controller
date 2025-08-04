@@ -178,3 +178,4 @@ screen_*.png
 local_config.py
 test_config.py
 debug.py
+spotify_token.json
