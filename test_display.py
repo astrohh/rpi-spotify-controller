@@ -7,7 +7,7 @@ This will help debug display issues
 import sys
 import time
 import RPi.GPIO as GPIO
-from eink_display import EInkDisplayrt EInkDisplay
+from eink_display import EInkDisplay
 
 
 def main():
