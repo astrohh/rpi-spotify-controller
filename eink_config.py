@@ -16,7 +16,7 @@ class RaspberryPi:
     CS_PIN = 8  # Physical pin 24 -> BCM GPIO 8
     BUSY_PIN = 24  # Physical pin 18 -> BCM GPIO 24
     PWR_PIN = 1  # Physical pin 1 -> 3.3V power supply (not a GPIO pin)
-    MOSI_PIN = 10  # Physical pin 19 -> BCM GPIO 10 (SPI MOSI)
+    MOSI_PIN = 20  # Physical pin 19 -> BCM GPIO 10 (SPI MOSI)
     SCLK_PIN = 11  # Physical pin 23 -> BCM GPIO 11 (SPI SCLK)
 
     def __init__(self):
