@@ -1,6 +1,6 @@
 """
 E-ink Display Driver for LoFi Pi (Raspberry Pi Zero)
-Supports 2.13" e-Paper displays (250x122 resolution)
+Supports Waveshare 2.13" e-Paper displays (250x122 resolution)
 """
 
 import os
@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 class EInkDisplay:
     def __init__(self, gpio_initialized=False):
-        # Display dimensions
+        # Display dimensions for Waveshare 2.13"
         self.width = 250
         self.height = 122
 
@@ -26,20 +26,33 @@ class EInkDisplay:
 
         # Initialize GPIO only if not already done
         if not gpio_initialized:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setwarnings(False)
+            try:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setwarnings(False)
+            except Exception as e:
+                print(f"GPIO mode setting failed: {e}")
 
-        # Setup display-specific pins
-        GPIO.setup(self.RST_PIN, GPIO.OUT)
-        GPIO.setup(self.DC_PIN, GPIO.OUT)
-        GPIO.setup(self.CS_PIN, GPIO.OUT)
-        GPIO.setup(self.BUSY_PIN, GPIO.IN)
+        # Setup display-specific pins with error handling
+        try:
+            GPIO.setup(self.RST_PIN, GPIO.OUT)
+            GPIO.setup(self.DC_PIN, GPIO.OUT)
+            GPIO.setup(self.CS_PIN, GPIO.OUT)
+            GPIO.setup(self.BUSY_PIN, GPIO.IN)
+            print("E-ink GPIO pins configured")
+        except Exception as e:
+            print(f"E-ink GPIO setup failed: {e}")
+            raise
 
         # Initialize SPI
-        self.spi = spidev.SpiDev()
-        self.spi.open(0, 0)  # Bus 0, Device 0
-        self.spi.max_speed_hz = 4000000
-        self.spi.mode = 0
+        try:
+            self.spi = spidev.SpiDev()
+            self.spi.open(0, 0)  # Bus 0, Device 0
+            self.spi.max_speed_hz = 4000000
+            self.spi.mode = 0
+            print("SPI initialized for e-ink display")
+        except Exception as e:
+            print(f"SPI initialization failed: {e}")
+            raise
 
         # Create image buffer
         self.image = Image.new(
@@ -69,12 +82,174 @@ class EInkDisplay:
         # Album art cache
         self.album_art_cache = {}
 
+        # Waveshare 2.13" LUT (Look-Up Table) for partial refresh
+        self.lut_partial_update = [
+            0x0,
+            0x40,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x80,
+            0x80,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x40,
+            0x40,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x80,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0A,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x2,
+            0x1,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x1,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x22,
+            0x22,
+            0x22,
+            0x22,
+            0x22,
+            0x22,
+            0x0,
+            0x0,
+            0x0,
+            0x22,
+            0x17,
+            0x41,
+            0xB0,
+            0x32,
+            0x36,
+        ]
+
         # Initialize display
-        self.init_display()
-        print("E-ink display initialized")
+        try:
+            self.init_display()
+            print("E-ink display initialized successfully")
+        except Exception as e:
+            print(f"E-ink display initialization failed: {e}")
+            # Continue anyway, might work partially
 
     def init_display(self):
-        """Initialize the e-ink display"""
+        """Initialize the Waveshare 2.13" e-ink display"""
+        print('Initializing Waveshare 2.13" display...')
+
         self.reset()
         self.wait_until_idle()
 
@@ -82,77 +257,48 @@ class EInkDisplay:
         self.send_command(0x12)
         self.wait_until_idle()
 
-        # Set display settings (adjust for your specific display model)
-        self.send_command(0x01)  # Driver output control
+        # Set driver output control - Waveshare 2.13" specific
+        self.send_command(0x01)
         self.send_data([0xF9, 0x00, 0x00])
 
-        self.send_command(0x11)  # Data entry mode
+        # Set data entry mode
+        self.send_command(0x11)
         self.send_data([0x01])
 
-        self.send_command(0x44)  # Set RAM X address
-        self.send_data([0x00, 0x0F])
+        # Set RAM X-address start/end position
+        self.send_command(0x44)
+        self.send_data([0x00, 0x0F])  # 0x0F = 15 (16*8-1)
 
-        self.send_command(0x45)  # Set RAM Y address
-        self.send_data([0xF9, 0x00, 0x00, 0x00])
+        # Set RAM Y-address start/end position
+        self.send_command(0x45)
+        self.send_data([0xF9, 0x00, 0x00, 0x00])  # 0xF9 = 249
 
-        self.send_command(0x3C)  # Border waveform
+        # Set border waveform
+        self.send_command(0x3C)
         self.send_data([0x03])
 
-        self.send_command(0x2C)  # VCOM value
+        # Set VCOM value
+        self.send_command(0x2C)
         self.send_data([0x55])
 
-        self.send_command(0x03)  # Gate voltage
-        self.send_data([0x15])
+        # Set LUT (Look-Up Table) for faster updates
+        self.send_command(0x32)
+        self.send_data(self.lut_partial_update)
 
-        self.send_command(0x04)  # Source voltage
-        self.send_data([0x41, 0xA8, 0x32])
+        # Set RAM X address counter
+        self.send_command(0x4E)
+        self.send_data([0x00])
 
-        self.send_command(0x3A)  # Dummy line period
-        self.send_data([0x30])
-
-        self.send_command(0x3B)  # Gate line width
-        self.send_data([0x0A])
-
-        self.send_command(0x32)  # LUT
-        self.send_data(
-            [
-                0x50,
-                0xAA,
-                0x55,
-                0xAA,
-                0x11,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0xFF,
-                0xFF,
-                0x1F,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ]
-        )
+        # Set RAM Y address counter
+        self.send_command(0x4F)
+        self.send_data([0xF9, 0x00])
 
         self.wait_until_idle()
+        print('Waveshare 2.13" display initialization complete')
 
     def reset(self):
-        """Hardware reset"""
+        """Hardware reset with proper timing for Waveshare"""
+        print("Performing hardware reset...")
         GPIO.output(self.RST_PIN, GPIO.HIGH)
         time.sleep(0.2)
         GPIO.output(self.RST_PIN, GPIO.LOW)
@@ -164,23 +310,38 @@ class EInkDisplay:
         """Send command to display"""
         GPIO.output(self.DC_PIN, GPIO.LOW)
         GPIO.output(self.CS_PIN, GPIO.LOW)
-        self.spi.writebytes([command])
-        GPIO.output(self.CS_PIN, GPIO.HIGH)
+        try:
+            self.spi.writebytes([command])
+        except Exception as e:
+            print(f"Error sending command {hex(command)}: {e}")
+        finally:
+            GPIO.output(self.CS_PIN, GPIO.HIGH)
 
     def send_data(self, data):
         """Send data to display"""
         GPIO.output(self.DC_PIN, GPIO.HIGH)
         GPIO.output(self.CS_PIN, GPIO.LOW)
-        if isinstance(data, list):
-            self.spi.writebytes(data)
-        else:
-            self.spi.writebytes([data])
-        GPIO.output(self.CS_PIN, GPIO.HIGH)
+        try:
+            if isinstance(data, list):
+                self.spi.writebytes(data)
+            else:
+                self.spi.writebytes([data])
+        except Exception as e:
+            print(f"Error sending data: {e}")
+        finally:
+            GPIO.output(self.CS_PIN, GPIO.HIGH)
 
     def wait_until_idle(self):
         """Wait for display to finish current operation"""
+        print("Waiting for display ready...")
+        timeout = 0
         while GPIO.input(self.BUSY_PIN) == 1:
             time.sleep(0.01)
+            timeout += 1
+            if timeout > 1000:  # 10 second timeout
+                print("Display timeout - continuing anyway")
+                break
+        print("Display ready")
 
     def clear(self):
         """Clear the display buffer"""
@@ -398,37 +559,51 @@ class EInkDisplay:
 
     def refresh(self):
         """Refresh the display with current buffer content"""
-        # Convert PIL image to display buffer
-        buffer = []
-        for y in range(self.height):
-            for x in range(0, self.width, 8):
-                byte = 0
-                for bit in range(8):
-                    if x + bit < self.width:
-                        pixel = self.image.getpixel((x + bit, y))
-                        if pixel == 0:  # Black pixel
-                            byte |= 1 << (7 - bit)
-                buffer.append(byte)
+        print("Refreshing display...")
 
-        # Set memory area
-        self.send_command(0x4E)
-        self.send_data([0x00])
+        try:
+            # Convert PIL image to display buffer
+            buffer = []
+            for y in range(self.height):
+                for x in range(0, self.width, 8):
+                    byte = 0
+                    for bit in range(8):
+                        if x + bit < self.width:
+                            pixel = self.image.getpixel((x + bit, y))
+                            if pixel == 0:  # Black pixel
+                                byte |= 1 << (7 - bit)
+                    buffer.append(byte)
 
-        self.send_command(0x4F)
-        self.send_data([0xF9, 0x00])
+            print(f"Generated buffer of {len(buffer)} bytes")
 
-        # Send buffer data
-        self.send_command(0x24)
-        for i in range(0, len(buffer), 4096):  # Send in chunks
-            chunk = buffer[i : i + 4096]
-            self.send_data(chunk)
+            # Set memory area
+            self.send_command(0x4E)
+            self.send_data([0x00])
 
-        # Update display
-        self.send_command(0x22)
-        self.send_data([0xC7])
+            self.send_command(0x4F)
+            self.send_data([0xF9, 0x00])
 
-        self.send_command(0x20)
-        self.wait_until_idle()
+            # Send buffer data
+            self.send_command(0x24)
+            for i in range(0, len(buffer), 64):  # Send in smaller chunks
+                chunk = buffer[i : i + 64]
+                self.send_data(chunk)
+                if i % 512 == 0:  # Progress indicator
+                    print(f"Sent {i}/{len(buffer)} bytes")
+
+            print("Buffer sent, updating display...")
+
+            # Update display
+            self.send_command(0x22)
+            self.send_data([0xC4])  # Use partial update mode
+
+            self.send_command(0x20)
+            self.wait_until_idle()
+
+            print("Display refresh complete")
+
+        except Exception as e:
+            print(f"Error during display refresh: {e}")
 
     def cleanup(self):
         """Clean up GPIO and SPI"""
