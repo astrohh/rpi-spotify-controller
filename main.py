@@ -17,7 +17,7 @@ from controls import Controls
 
 # Import custom modules
 from spotify_api import SpotifyAPI
-from eink_display import EInkDisplayInkDisplay
+from eink_display import EInkDisplay
 
 
 class LoFiPi:
