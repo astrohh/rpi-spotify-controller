@@ -1,614 +1,404 @@
-"""
-E-ink Display Driver for LoFi Pi (Raspberry Pi Zero)
-Supports Waveshare 2.13" e-Paper displays (250x122 resolution)
-"""
+import logging
+import eink_config as epdconfig
 
-import os
-import time
-import spidev
-import requests
-from io import BytesIO
-import RPi.GPIO as GPIO
-from PIL import Image, ImageDraw, ImageFont
+# Display resolution
+EPD_WIDTH = 122
+EPD_HEIGHT = 250
+
+logger = logging.getLogger(__name__)
 
 
-class EInkDisplay:
-    def __init__(self, gpio_initialized=False):
-        # Display dimensions for Waveshare 2.13"
-        self.width = 250
-        self.height = 122
+class EPD:
+    def __init__(self):
+        self.reset_pin = epdconfig.RST_PIN
+        self.dc_pin = epdconfig.DC_PIN
+        self.busy_pin = epdconfig.BUSY_PIN
+        self.cs_pin = epdconfig.CS_PIN
+        self.width = EPD_WIDTH
+        self.height = EPD_HEIGHT
 
-        # GPIO pin assignments (BCM numbering)
-        self.RST_PIN = 17
-        self.DC_PIN = 25
-        self.CS_PIN = 8
-        self.BUSY_PIN = 24
+    FULL_UPDATE = 0
+    PART_UPDATE = 1
+    lut_full_update = [
+        0x80,
+        0x60,
+        0x40,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT0: BB:     VS 0 ~7
+        0x10,
+        0x60,
+        0x20,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT1: BW:     VS 0 ~7
+        0x80,
+        0x60,
+        0x40,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT2: WB:     VS 0 ~7
+        0x10,
+        0x60,
+        0x20,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT3: WW:     VS 0 ~7
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT4: VCOM:   VS 0 ~7
+        0x03,
+        0x03,
+        0x00,
+        0x00,
+        0x02,  # TP0 A~D RP0
+        0x09,
+        0x09,
+        0x00,
+        0x00,
+        0x02,  # TP1 A~D RP1
+        0x03,
+        0x03,
+        0x00,
+        0x00,
+        0x02,  # TP2 A~D RP2
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP3 A~D RP3
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP4 A~D RP4
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP5 A~D RP5
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP6 A~D RP6
+        0x15,
+        0x41,
+        0xA8,
+        0x32,
+        0x30,
+        0x0A,
+    ]
 
-        # Initialize GPIO only if not already done
-        if not gpio_initialized:
-            try:
-                GPIO.setmode(GPIO.BCM)
-                GPIO.setwarnings(False)
-            except Exception as e:
-                print(f"GPIO mode setting failed: {e}")
+    lut_partial_update = [  # 20 bytes
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT0: BB:     VS 0 ~7
+        0x80,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT1: BW:     VS 0 ~7
+        0x40,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT2: WB:     VS 0 ~7
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT3: WW:     VS 0 ~7
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # LUT4: VCOM:   VS 0 ~7
+        0x0A,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP0 A~D RP0
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP1 A~D RP1
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP2 A~D RP2
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP3 A~D RP3
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP4 A~D RP4
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP5 A~D RP5
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # TP6 A~D RP6
+        0x15,
+        0x41,
+        0xA8,
+        0x32,
+        0x30,
+        0x0A,
+    ]
 
-        # Setup display-specific pins with error handling
-        try:
-            GPIO.setup(self.RST_PIN, GPIO.OUT)
-            GPIO.setup(self.DC_PIN, GPIO.OUT)
-            GPIO.setup(self.CS_PIN, GPIO.OUT)
-            GPIO.setup(self.BUSY_PIN, GPIO.IN)
-            print("E-ink GPIO pins configured")
-        except Exception as e:
-            print(f"E-ink GPIO setup failed: {e}")
-            raise
-
-        # Initialize SPI
-        try:
-            self.spi = spidev.SpiDev()
-            self.spi.open(0, 0)  # Bus 0, Device 0
-            self.spi.max_speed_hz = 4000000
-            self.spi.mode = 0
-            print("SPI initialized for e-ink display")
-        except Exception as e:
-            print(f"SPI initialization failed: {e}")
-            raise
-
-        # Create image buffer
-        self.image = Image.new(
-            "1", (self.width, self.height), 255
-        )  # 1-bit image, white background
-        self.draw = ImageDraw.Draw(self.image)
-
-        # Load fonts (fallback to default if not available)
-        try:
-            self.font_large = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16
-            )
-            self.font_medium = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12
-            )
-            self.font_small = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10
-            )
-        except:
-            self.font_large = ImageFont.load_default()
-            self.font_medium = ImageFont.load_default()
-            self.font_small = ImageFont.load_default()
-
-        # Current display mode
-        self.display_mode = 0  # 0: Track info, 1: Volume, 2: Clock
-
-        # Album art cache
-        self.album_art_cache = {}
-
-        # Waveshare 2.13" LUT (Look-Up Table) for partial refresh
-        self.lut_partial_update = [
-            0x0,
-            0x40,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x80,
-            0x80,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x40,
-            0x40,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x80,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0A,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x2,
-            0x1,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x1,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x0,
-            0x22,
-            0x22,
-            0x22,
-            0x22,
-            0x22,
-            0x22,
-            0x0,
-            0x0,
-            0x0,
-            0x22,
-            0x17,
-            0x41,
-            0xB0,
-            0x32,
-            0x36,
-        ]
-
-        # Initialize display
-        try:
-            self.init_display()
-            print("E-ink display initialized successfully")
-        except Exception as e:
-            print(f"E-ink display initialization failed: {e}")
-            # Continue anyway, might work partially
-
-    def init_display(self):
-        """Initialize the Waveshare 2.13" e-ink display"""
-        print('Initializing Waveshare 2.13" display...')
-
-        self.reset()
-        self.wait_until_idle()
-
-        # Software reset
-        self.send_command(0x12)
-        self.wait_until_idle()
-
-        # Set driver output control - Waveshare 2.13" specific
-        self.send_command(0x01)
-        self.send_data([0xF9, 0x00, 0x00])
-
-        # Set data entry mode
-        self.send_command(0x11)
-        self.send_data([0x01])
-
-        # Set RAM X-address start/end position
-        self.send_command(0x44)
-        self.send_data([0x00, 0x0F])  # 0x0F = 15 (16*8-1)
-
-        # Set RAM Y-address start/end position
-        self.send_command(0x45)
-        self.send_data([0xF9, 0x00, 0x00, 0x00])  # 0xF9 = 249
-
-        # Set border waveform
-        self.send_command(0x3C)
-        self.send_data([0x03])
-
-        # Set VCOM value
-        self.send_command(0x2C)
-        self.send_data([0x55])
-
-        # Set LUT (Look-Up Table) for faster updates
-        self.send_command(0x32)
-        self.send_data(self.lut_partial_update)
-
-        # Set RAM X address counter
-        self.send_command(0x4E)
-        self.send_data([0x00])
-
-        # Set RAM Y address counter
-        self.send_command(0x4F)
-        self.send_data([0xF9, 0x00])
-
-        self.wait_until_idle()
-        print('Waveshare 2.13" display initialization complete')
-
+    # Hardware reset
     def reset(self):
-        """Hardware reset with proper timing for Waveshare"""
-        print("Performing hardware reset...")
-        GPIO.output(self.RST_PIN, GPIO.HIGH)
-        time.sleep(0.2)
-        GPIO.output(self.RST_PIN, GPIO.LOW)
-        time.sleep(0.002)
-        GPIO.output(self.RST_PIN, GPIO.HIGH)
-        time.sleep(0.2)
+        epdconfig.digital_write(self.reset_pin, 1)
+        epdconfig.delay_ms(200)
+        epdconfig.digital_write(self.reset_pin, 0)
+        epdconfig.delay_ms(5)
+        epdconfig.digital_write(self.reset_pin, 1)
+        epdconfig.delay_ms(200)
 
     def send_command(self, command):
-        """Send command to display"""
-        GPIO.output(self.DC_PIN, GPIO.LOW)
-        GPIO.output(self.CS_PIN, GPIO.LOW)
-        try:
-            self.spi.writebytes([command])
-        except Exception as e:
-            print(f"Error sending command {hex(command)}: {e}")
-        finally:
-            GPIO.output(self.CS_PIN, GPIO.HIGH)
+        epdconfig.digital_write(self.dc_pin, 0)
+        epdconfig.digital_write(self.cs_pin, 0)
+        epdconfig.spi_writebyte([command])
+        epdconfig.digital_write(self.cs_pin, 1)
 
     def send_data(self, data):
-        """Send data to display"""
-        GPIO.output(self.DC_PIN, GPIO.HIGH)
-        GPIO.output(self.CS_PIN, GPIO.LOW)
-        try:
-            if isinstance(data, list):
-                self.spi.writebytes(data)
-            else:
-                self.spi.writebytes([data])
-        except Exception as e:
-            print(f"Error sending data: {e}")
-        finally:
-            GPIO.output(self.CS_PIN, GPIO.HIGH)
+        epdconfig.digital_write(self.dc_pin, 1)
+        epdconfig.digital_write(self.cs_pin, 0)
+        epdconfig.spi_writebyte([data])
+        epdconfig.digital_write(self.cs_pin, 1)
 
-    def wait_until_idle(self):
-        """Wait for display to finish current operation"""
-        print("Waiting for display ready...")
-        timeout = 0
-        while GPIO.input(self.BUSY_PIN) == 1:
-            time.sleep(0.01)
-            timeout += 1
-            if timeout > 1000:  # 10 second timeout
-                print("Display timeout - continuing anyway")
-                break
-        print("Display ready")
+    # send a lot of data
+    def send_data2(self, data):
+        epdconfig.digital_write(self.dc_pin, 1)
+        epdconfig.digital_write(self.cs_pin, 0)
+        epdconfig.spi_writebyte2(data)
+        epdconfig.digital_write(self.cs_pin, 1)
 
-    def clear(self):
-        """Clear the display buffer"""
-        self.draw.rectangle((0, 0, self.width, self.height), fill=255)
+    def ReadBusy(self):
+        while epdconfig.digital_read(self.busy_pin) == 1:  # 0: idle, 1: busy
+            epdconfig.delay_ms(100)
 
-    def show_message(self, title, message):
-        """Display a simple message"""
-        self.clear()
+    def TurnOnDisplay(self):
+        self.send_command(0x22)
+        self.send_data(0xC7)
+        self.send_command(0x20)
+        self.ReadBusy()
 
-        # Draw title
-        self.draw.text((10, 20), title, font=self.font_large, fill=0)
+    def TurnOnDisplayPart(self):
+        self.send_command(0x22)
+        self.send_data(0x0C)
+        self.send_command(0x20)
+        self.ReadBusy()
 
-        # Draw message with word wrapping
-        if message:
-            words = message.split(" ")
-            lines = []
-            current_line = ""
+    def init(self, update):
+        if epdconfig.module_init() != 0:
+            return -1
+        # EPD hardware init start
+        self.reset()
+        if update == self.FULL_UPDATE:
+            self.ReadBusy()
+            self.send_command(0x12)  # soft reset
+            self.ReadBusy()
 
-            for word in words:
-                test_line = current_line + word + " "
-                bbox = self.draw.textbbox((0, 0), test_line, font=self.font_medium)
-                if bbox[2] < 230:  # Width check
-                    current_line = test_line
-                else:
-                    if current_line:
-                        lines.append(current_line.strip())
-                    current_line = word + " "
+            self.send_command(0x74)  # set analog block control
+            self.send_data(0x54)
+            self.send_command(0x7E)  # set digital block control
+            self.send_data(0x3B)
 
-            if current_line:
-                lines.append(current_line.strip())
+            self.send_command(0x01)  # Driver output control
+            self.send_data(0xF9)
+            self.send_data(0x00)
+            self.send_data(0x00)
 
-            # Display lines
-            y_pos = 50
-            for line in lines[:3]:  # Max 3 lines
-                self.draw.text((10, y_pos), line, font=self.font_medium, fill=0)
-                y_pos += 20
+            self.send_command(0x11)  # data entry mode
+            self.send_data(0x01)
 
-        self.refresh()
+            self.send_command(0x44)  # set Ram-X address start/end position
+            self.send_data(0x00)
+            self.send_data(0x0F)  # 0x0C-->(15+1)*8=128
 
-    def show_track(self, track_info):
-        """Display current track information with album art"""
-        self.clear()
+            self.send_command(0x45)  # set Ram-Y address start/end position
+            self.send_data(0xF9)  # 0xF9-->(249+1)=250
+            self.send_data(0x00)
+            self.send_data(0x00)
+            self.send_data(0x00)
 
-        # Get album art
-        album_art = self.get_album_art(track_info.get("image_url"))
+            self.send_command(0x3C)  # BorderWavefrom
+            self.send_data(0x03)
 
-        if album_art:
-            # Display album art on the right side (60x60 pixels)
-            art_size = 60
-            art_x = self.width - art_size - 10
-            art_y = 10
+            self.send_command(0x2C)  # VCOM Voltage
+            self.send_data(0x55)  #
 
-            # Resize and paste album art
-            album_art_resized = album_art.resize(
-                (art_size, art_size), Image.Resampling.LANCZOS
-            )
-            # Convert to 1-bit and paste
-            album_art_1bit = album_art_resized.convert("1")
-            self.image.paste(album_art_1bit, (art_x, art_y))
+            self.send_command(0x03)
+            self.send_data(self.lut_full_update[70])
 
-            # Adjust text area to avoid overlap
-            text_width = art_x - 20
+            self.send_command(0x04)  #
+            self.send_data(self.lut_full_update[71])
+            self.send_data(self.lut_full_update[72])
+            self.send_data(self.lut_full_update[73])
+
+            self.send_command(0x3A)  # Dummy Line
+            self.send_data(self.lut_full_update[74])
+            self.send_command(0x3B)  # Gate time
+            self.send_data(self.lut_full_update[75])
+
+            self.send_command(0x32)
+            for count in range(70):
+                self.send_data(self.lut_full_update[count])
+
+            self.send_command(0x4E)  # set RAM x address count to 0
+            self.send_data(0x00)
+            self.send_command(0x4F)  # set RAM y address count to 0X127
+            self.send_data(0xF9)
+            self.send_data(0x00)
+            self.ReadBusy()
         else:
-            text_width = self.width - 20
+            self.send_command(0x2C)  # VCOM Voltage
+            self.send_data(0x26)
 
-        # Track title (truncate if too long)
-        title = track_info.get("name", "Unknown")
-        title = self.truncate_text(title, self.font_large, text_width)
-        self.draw.text((10, 10), title, font=self.font_large, fill=0)
+            self.ReadBusy()
 
-        # Artist
-        artist = track_info.get("artist", "Unknown Artist")
-        artist = self.truncate_text(artist, self.font_medium, text_width)
-        self.draw.text((10, 30), artist, font=self.font_medium, fill=0)
+            self.send_command(0x32)
+            for count in range(70):
+                self.send_data(self.lut_partial_update[count])
 
-        # Album
-        album = track_info.get("album", "Unknown Album")
-        album = self.truncate_text(album, self.font_small, text_width)
-        self.draw.text((10, 50), album, font=self.font_small, fill=0)
+            self.send_command(0x37)
+            self.send_data(0x00)
+            self.send_data(0x00)
+            self.send_data(0x00)
+            self.send_data(0x00)
+            self.send_data(0x40)
+            self.send_data(0x00)
+            self.send_data(0x00)
 
-        # Progress bar
-        duration = track_info.get("duration", 0)
-        progress = track_info.get("progress", 0)
-
-        if duration > 0:
-            progress_ratio = progress / duration
-            bar_width = 200
-            bar_height = 4
-            bar_x = 10
-            bar_y = 80
-
-            # Draw progress bar background
-            self.draw.rectangle(
-                (bar_x, bar_y, bar_x + bar_width, bar_y + bar_height), fill=0, outline=0
-            )
-
-            # Draw progress
-            progress_width = int(bar_width * progress_ratio)
-            if progress_width > 2:
-                self.draw.rectangle(
-                    (
-                        bar_x + 1,
-                        bar_y + 1,
-                        bar_x + progress_width - 1,
-                        bar_y + bar_height - 1,
-                    ),
-                    fill=255,
-                )
-
-        # Time display
-        progress_min = (progress // 1000) // 60
-        progress_sec = (progress // 1000) % 60
-        duration_min = (duration // 1000) // 60
-        duration_sec = (duration // 1000) % 60
-
-        time_str = (
-            f"{progress_min}:{progress_sec:02d} / {duration_min}:{duration_sec:02d}"
-        )
-        self.draw.text((10, 95), time_str, font=self.font_small, fill=0)
-
-        self.refresh()
-
-    def get_album_art(self, image_url):
-        """Download and cache album art"""
-        if not image_url:
-            return None
-
-        # Check cache first
-        if image_url in self.album_art_cache:
-            return self.album_art_cache[image_url]
-
-        try:
-            # Download image
-            response = requests.get(image_url, timeout=5)
-            if response.status_code == 200:
-                image = Image.open(BytesIO(response.content))
-
-                # Cache the image (limit cache size)
-                if len(self.album_art_cache) > 10:
-                    # Remove oldest entry
-                    oldest_key = next(iter(self.album_art_cache))
-                    del self.album_art_cache[oldest_key]
-
-                self.album_art_cache[image_url] = image
-                return image
-
-        except Exception as e:
-            print(f"Error downloading album art: {e}")
-
-        return None
-
-    def truncate_text(self, text, font, max_width):
-        """Truncate text to fit within max_width"""
-        bbox = self.draw.textbbox((0, 0), text, font=font)
-        if bbox[2] <= max_width:
-            return text
-
-        # Binary search for the right length
-        left, right = 0, len(text)
-        while left < right:
-            mid = (left + right + 1) // 2
-            test_text = text[:mid] + "..."
-            bbox = self.draw.textbbox((0, 0), test_text, font=font)
-            if bbox[2] <= max_width:
-                left = mid
-            else:
-                right = mid - 1
-
-        return text[:left] + "..." if left < len(text) else text
-
-    def show_volume(self, volume):
-        """Display volume level"""
-        self.clear()
-
-        # Volume text
-        self.draw.text((10, 30), "Volume", font=self.font_large, fill=0)
-        self.draw.text((10, 55), f"{volume}%", font=self.font_large, fill=0)
-
-        # Volume bar
-        bar_width = 180
-        bar_height = 20
-        bar_x = 30
-        bar_y = 80
-
-        # Draw bar background
-        self.draw.rectangle(
-            (bar_x, bar_y, bar_x + bar_width, bar_y + bar_height), fill=255, outline=0
-        )
-
-        # Draw volume level
-        volume_width = int((volume / 100) * (bar_width - 4))
-        if volume_width > 0:
-            self.draw.rectangle(
-                (
-                    bar_x + 2,
-                    bar_y + 2,
-                    bar_x + 2 + volume_width,
-                    bar_y + bar_height - 2,
-                ),
-                fill=0,
-            )
-
-        self.refresh()
-
-    def toggle_mode(self):
-        """Toggle between different display modes"""
-        self.display_mode = (self.display_mode + 1) % 3
-
-        if self.display_mode == 0:
-            self.show_message("Mode", "Track Info")
-        elif self.display_mode == 1:
-            self.show_message("Mode", "Volume Display")
-        elif self.display_mode == 2:
-            self.show_message("Mode", "Clock Mode")
-
-    def refresh(self):
-        """Refresh the display with current buffer content"""
-        print("Refreshing display...")
-
-        try:
-            # Convert PIL image to display buffer
-            buffer = []
-            for y in range(self.height):
-                for x in range(0, self.width, 8):
-                    byte = 0
-                    for bit in range(8):
-                        if x + bit < self.width:
-                            pixel = self.image.getpixel((x + bit, y))
-                            if pixel == 0:  # Black pixel
-                                byte |= 1 << (7 - bit)
-                    buffer.append(byte)
-
-            print(f"Generated buffer of {len(buffer)} bytes")
-
-            # Set memory area
-            self.send_command(0x4E)
-            self.send_data([0x00])
-
-            self.send_command(0x4F)
-            self.send_data([0xF9, 0x00])
-
-            # Send buffer data
-            self.send_command(0x24)
-            for i in range(0, len(buffer), 64):  # Send in smaller chunks
-                chunk = buffer[i : i + 64]
-                self.send_data(chunk)
-                if i % 512 == 0:  # Progress indicator
-                    print(f"Sent {i}/{len(buffer)} bytes")
-
-            print("Buffer sent, updating display...")
-
-            # Update display
             self.send_command(0x22)
-            self.send_data([0xC4])  # Use partial update mode
-
+            self.send_data(0xC0)
             self.send_command(0x20)
-            self.wait_until_idle()
+            self.ReadBusy()
 
-            print("Display refresh complete")
+            self.send_command(0x3C)  # BorderWavefrom
+            self.send_data(0x01)
+        return 0
 
-        except Exception as e:
-            print(f"Error during display refresh: {e}")
+    def getbuffer(self, image):
+        if self.width % 8 == 0:
+            linewidth = int(self.width / 8)
+        else:
+            linewidth = int(self.width / 8) + 1
 
-    def cleanup(self):
-        """Clean up GPIO and SPI"""
-        try:
-            self.spi.close()
-            GPIO.cleanup()
-        except:
-            pass
+        buf = [0xFF] * (linewidth * self.height)
+        image_monocolor = image.convert("1")
+        imwidth, imheight = image_monocolor.size
+        pixels = image_monocolor.load()
+
+        if imwidth == self.width and imheight == self.height:
+            logger.debug("Vertical")
+            for y in range(imheight):
+                for x in range(imwidth):
+                    if pixels[x, y] == 0:
+                        x = imwidth - x
+                        buf[int(x / 8) + y * linewidth] &= ~(0x80 >> (x % 8))
+        elif imwidth == self.height and imheight == self.width:
+            logger.debug("Horizontal")
+            for y in range(imheight):
+                for x in range(imwidth):
+                    newx = y
+                    newy = self.height - x - 1
+                    if pixels[x, y] == 0:
+                        newy = imwidth - newy - 1
+                        buf[int(newx / 8) + newy * linewidth] &= ~(0x80 >> (y % 8))
+        return buf
+
+    def display(self, image):
+        self.send_command(0x24)
+        self.send_data2(image)
+        self.TurnOnDisplay()
+
+    def displayPartial(self, image):
+        if self.width % 8 == 0:
+            linewidth = int(self.width / 8)
+        else:
+            linewidth = int(self.width / 8) + 1
+
+        buf = [0x00] * self.height * linewidth
+        for j in range(0, self.height):
+            for i in range(0, linewidth):
+                buf[i + j * linewidth] = ~image[i + j * linewidth]
+
+        self.send_command(0x24)
+        self.send_data2(image)
+
+        self.send_command(0x26)
+        self.send_data2(buf)
+        self.TurnOnDisplayPart()
+
+    def displayPartBaseImage(self, image):
+        self.send_command(0x24)
+        self.send_data2(image)
+
+        self.send_command(0x26)
+        self.send_data2(image)
+        self.TurnOnDisplay()
+
+    def Clear(self, color=0xFF):
+        if self.width % 8 == 0:
+            linewidth = int(self.width / 8)
+        else:
+            linewidth = int(self.width / 8) + 1
+        # logger.debug(linewidth)
+
+        buf = [0x00] * self.height * linewidth
+        for j in range(0, self.height):
+            for i in range(0, linewidth):
+                buf[i + j * linewidth] = color
+
+        self.send_command(0x24)
+        self.send_data2(buf)
+
+        # self.send_command(0x26)
+        # for j in range(0, self.height):
+        # for i in range(0, linewidth):
+        # self.send_data(color)
+
+        self.TurnOnDisplay()
+
+    def sleep(self):
+        # self.send_command(0x22) #POWER OFF
+        # self.send_data(0xC3)
+        # self.send_command(0x20)
+
+        self.send_command(0x10)  # enter deep sleep
+        self.send_data(0x03)
+        epdconfig.delay_ms(2000)
+        epdconfig.module_exit()
