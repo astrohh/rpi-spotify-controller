@@ -66,31 +66,46 @@ def test_gpio_pins():
     pins = {"RST": 17, "DC": 25, "CS": 8, "BUSY": 24}
 
     try:
+        # Force cleanup first
+        try:
+            GPIO.cleanup()
+        except:
+            pass
+
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
 
         for name, pin in pins.items():
             try:
                 if name == "BUSY":
-                    GPIO.setup(pin, GPIO.IN)
+                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
                     state = GPIO.input(pin)
                     print(f"✓ {name} (GPIO {pin}): INPUT = {state}")
                 else:
                     GPIO.setup(pin, GPIO.OUT)
                     GPIO.output(pin, 1)
+                    time.sleep(0.1)  # Small delay
                     state = GPIO.input(pin)
-                    print(f"✓ {name} (GPIO {pin}): OUTPUT = {state}")
+                    print(f"✓ {name} (GPIO {pin}): OUTPUT HIGH = {state}")
                     GPIO.output(pin, 0)
+                    time.sleep(0.1)
+                    state = GPIO.input(pin)
+                    print(f"✓ {name} (GPIO {pin}): OUTPUT LOW = {state}")
             except Exception as e:
                 print(f"✗ {name} (GPIO {pin}): Error = {e}")
+                # Try to continue with other pins
+                continue
 
-        GPIO.cleanup()
         return True
 
     except Exception as e:
         print(f"✗ GPIO test failed: {e}")
-        GPIO.cleanup()
         return False
+    finally:
+        try:
+            GPIO.cleanup()
+        except:
+            pass
 
 
 def test_spi():
