@@ -15,8 +15,8 @@ class RaspberryPi:
     DC_PIN = 25  # Physical pin 22 -> BCM GPIO 25
     CS_PIN = 8  # Physical pin 24 -> BCM GPIO 8
     BUSY_PIN = 24  # Physical pin 18 -> BCM GPIO 24
-    PWR_PIN = 1  # Physical pin 1 -> 3.3V power supply (not a GPIO pin)
-    MOSI_PIN = 20  # Physical pin 19 -> BCM GPIO 10 (SPI MOSI)
+    PWR_PIN = 18  # Physical pin 12 -> BCM GPIO 18 (use actual GPIO pin)
+    MOSI_PIN = 10  # Physical pin 19 -> BCM GPIO 10 (SPI MOSI)
     SCLK_PIN = 11  # Physical pin 23 -> BCM GPIO 11 (SPI SCLK)
 
     def __init__(self):
@@ -27,7 +27,8 @@ class RaspberryPi:
         self.GPIO_RST_PIN = gpiozero.LED(self.RST_PIN)
         self.GPIO_DC_PIN = gpiozero.LED(self.DC_PIN)
         # self.GPIO_CS_PIN     = gpiozero.LED(self.CS_PIN)
-        self.GPIO_PWR_PIN = gpiozero.LED(self.PWR_PIN)
+        # Note: PWR_PIN removed - HAT gets power from 3.3V rail
+        # self.GPIO_PWR_PIN = gpiozero.LED(self.PWR_PIN)
         self.GPIO_BUSY_PIN = gpiozero.Button(self.BUSY_PIN, pull_up=False)
 
     def digital_write(self, pin, value):
@@ -47,10 +48,8 @@ class RaspberryPi:
         #     else:
         #         self.GPIO_CS_PIN.off()
         elif pin == self.PWR_PIN:
-            if value:
-                self.GPIO_PWR_PIN.on()
-            else:
-                self.GPIO_PWR_PIN.off()
+            # PWR_PIN not implemented - HAT gets power from 3.3V rail
+            pass
 
     def digital_read(self, pin):
         if pin == self.BUSY_PIN:
@@ -62,7 +61,8 @@ class RaspberryPi:
         # elif pin == self.CS_PIN:
         #     return self.GPIO_CS_PIN.value
         elif pin == self.PWR_PIN:
-            return self.GPIO_PWR_PIN.value
+            # PWR_PIN not available - HAT gets power from 3.3V rail
+            return 0
 
     def delay_ms(self, delaytime):
         time.sleep(delaytime / 1000.0)
@@ -83,7 +83,8 @@ class RaspberryPi:
         return self.DEV_SPI.DEV_SPI_ReadData()
 
     def module_init(self, cleanup=False):
-        self.GPIO_PWR_PIN.on()
+        # Note: PWR_PIN removed - HAT gets power from 3.3V rail
+        # self.GPIO_PWR_PIN.on()
 
         if cleanup:
             find_dirs = [
@@ -120,14 +121,14 @@ class RaspberryPi:
 
         self.GPIO_RST_PIN.off()
         self.GPIO_DC_PIN.off()
-        self.GPIO_PWR_PIN.off()
+        # self.GPIO_PWR_PIN.off()
         logger.debug("close 5V, Module enters 0 power consumption ...")
 
         if cleanup:
             self.GPIO_RST_PIN.close()
             self.GPIO_DC_PIN.close()
             # self.GPIO_CS_PIN.close()
-            self.GPIO_PWR_PIN.close()
+            # self.GPIO_PWR_PIN.close()
             self.GPIO_BUSY_PIN.close()
 
 
