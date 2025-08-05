@@ -157,12 +157,15 @@ def check_system():
 
     # Check imports
     modules = ["spidev", "RPi.GPIO", "gpiozero"]
+    all_good = True
+
     for module in modules:
         try:
             __import__(module)
             print(f"✓ {module} available")
         except ImportError as e:
             print(f"✗ {module} missing: {e}")
+            all_good = False
 
     # Check SPI devices
     try:
@@ -173,8 +176,12 @@ def check_system():
             print(f"✓ SPI devices: {spi_devs}")
         else:
             print("✗ No SPI devices found")
+            all_good = False
     except Exception as e:
         print(f"✗ Error checking SPI: {e}")
+        all_good = False
+
+    return all_good
 
 
 def main():
