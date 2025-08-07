@@ -13,7 +13,7 @@ import RPi.GPIO as GPIO
 from pathlib import Path
 
 from config import Config
-from controls import Controlsols
+from controls import Controls
 
 # Import custom modules
 from spotify_api import SpotifyAPI
