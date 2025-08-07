@@ -10,14 +10,14 @@ import signal
 import requests
 import threading
 import RPi.GPIO as GPIO
-from pathlib import Pathrt Pathrt Pathrt Path
+from pathlib import Path
 
 from config import Config
 from controls import Controls
 
 # Import custom modules
 from spotify_api import SpotifyAPI
-from eink_display import EInkDisplaylaylaylay
+from eink_display import EInkDisplay
 
 
 class LoFiPi:
