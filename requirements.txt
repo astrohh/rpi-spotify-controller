@@ -11,5 +11,8 @@ spidev>=3.5
 # Optional: For better image processing
 numpy>=1.21.0
 
+# Token monitoring and scheduling
+schedule>=1.1.0
+
 # Optional: For system service management
 # systemd-python>=234

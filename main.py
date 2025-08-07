@@ -10,14 +10,14 @@ import signal
 import requests
 import threading
 import RPi.GPIO as GPIO
-from pathlib import Path
+from pathlib import Pathrt Pathrt Pathrt Path
 
 from config import Config
 from controls import Controls
 
 # Import custom modules
 from spotify_api import SpotifyAPI
-from eink_display import EInkDisplay
+from eink_display import EInkDisplaylaylaylay
 
 
 class LoFiPi:
@@ -202,12 +202,79 @@ class LoFiPi:
         # Authenticate with Spotify
         if not self.spotify.authenticate():
             self.display.show_message("Auth Failed", "Check tokens")
-            return False
+            print("\n" + "=" * 50)
+            print("SPOTIFY AUTHENTICATION FAILED")
+            print("=" * 50)
+            print("Your Spotify tokens have expired or are invalid.")
+            print("To fix this issue:")
+            print("1. Run: python headless_spotify_auth.py")
+            print("2. Follow the instructions to re-authenticate")
+            print("3. Restart LoFi Pi")
+            print("\nLoFi Pi will continue to retry authentication...")
+            print("=" * 50)
+
+            # Continue running but with limited functionality
+            return self.run_without_spotify()
 
         print("Spotify authentication successful!")
         self.display.show_message("Connected", "Ready to rock!")
         time.sleep(2)
 
+        # Start normal operation mode
+        return self.run_normal_mode()
+
+    def run_without_spotify(self):
+        """Run in limited mode when Spotify authentication fails"""
+        print("Running in limited mode - authentication will be retried periodically")
+
+        # Show authentication required message
+        self.display.show_message("Auth Required", "Run: headless_auth")
+
+        retry_count = 0
+        max_retries = 10
+
+        try:
+            while self.running and retry_count < max_retries:
+                # Process control inputs (if controls are available)
+                if self.controls:
+                    self.controls.update()
+
+                # Try to re-authenticate every 2 minutes
+                if retry_count % 2400 == 0:  # 2400 * 0.05s = 2 minutes
+                    print(
+                        f"Retry {retry_count // 2400 + 1}/{max_retries // 2400}: Attempting Spotify re-authentication..."
+                    )
+                    if self.spotify.authenticate():
+                        print(
+                            "Re-authentication successful! Switching to normal mode..."
+                        )
+                        self.display.show_message("Connected", "Ready to rock!")
+                        time.sleep(2)
+                        return self.run_normal_mode()
+                    else:
+                        self.display.show_message(
+                            "Auth Failed", f"Retry {retry_count // 2400 + 1}"
+                        )
+
+                retry_count += 1
+                time.sleep(0.05)  # 50ms polling rate
+
+        except KeyboardInterrupt:
+            print("\nShutdown requested...")
+        finally:
+            self.running = False
+            self.display.cleanup()
+            GPIO.cleanup()
+            if self.controls:
+                self.controls.cleanup()
+
+        print(
+            "Max retries reached. Please run 'python headless_spotify_auth.py' to fix authentication."
+        )
+        return False
+
+    def run_normal_mode(self):
+        """Run in normal mode with Spotify authentication"""
         # Start background update thread
         self.update_thread.start()
 

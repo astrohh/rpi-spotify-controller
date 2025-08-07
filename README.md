@@ -45,9 +45,36 @@ A minimalist Spotify controller using a Raspberry Pi Zero with e-ink display, me
 
 1. Install Raspberry Pi OS Lite on your Pi Zero
 2. Enable SPI interface in raspi-config
-3. Install Python dependencies
-4. Configure your Spotify API credentials
+3. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Configure your Spotify API credentials in `config.py`
 5. Connect to WiFi
+6. **Authenticate with Spotify** (for headless setup):
+   ```bash
+   python headless_spotify_auth.py
+   ```
+   Follow the instructions to authenticate using any device with a browser.
+
+## Authentication Management
+
+This project includes automated token management to minimize manual intervention:
+
+- **Automatic token refresh**: Tokens are automatically refreshed when they expire
+- **Headless authentication**: Re-authenticate without needing a browser on the Pi
+- **Token monitoring**: Optional monitoring service to maintain token health
+- **Graceful degradation**: System continues running even when authentication fails
+
+### Quick Auth Fix
+
+If you see "Auth Failed" on the display:
+
+```bash
+python headless_spotify_auth.py
+```
+
+See `docs/token_management.md` for detailed information about the authentication system.
 
 ## Features
 
