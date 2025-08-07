@@ -1,404 +1,297 @@
-import logging
-import eink_config as epdconfig
+"""
+E-ink Display Module for LoFi Pi
+Wraps the Waveshare 2.13" B/W/Red display driver for easier use
+"""
 
-# Display resolution
-EPD_WIDTH = 122
-EPD_HEIGHT = 250
+import os
+import sys
+import time
+import loggingmport logging
+
+# Add lib directory to path
+lib_dir = os.path.join(os.path.dirname(__file__), "lib")
+if lib_dir not in sys.path:
+    sys.path.insert(0, lib_dir)
+
+from lib import epdconfig
+from lib import epd_2in13b as epd_module
+from PIL import Image, ImageDraw, ImageFontImage, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
 
-class EPD:
-    def __init__(self):
-        self.reset_pin = epdconfig.RST_PIN
-        self.dc_pin = epdconfig.DC_PIN
-        self.busy_pin = epdconfig.BUSY_PIN
-        self.cs_pin = epdconfig.CS_PIN
-        self.width = EPD_WIDTH
-        self.height = EPD_HEIGHT
+class EInkDisplay:
+    """Simplified interface for the Waveshare 2.13" e-ink display"""
 
-    FULL_UPDATE = 0
-    PART_UPDATE = 1
-    lut_full_update = [
-        0x80,
-        0x60,
-        0x40,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT0: BB:     VS 0 ~7
-        0x10,
-        0x60,
-        0x20,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT1: BW:     VS 0 ~7
-        0x80,
-        0x60,
-        0x40,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT2: WB:     VS 0 ~7
-        0x10,
-        0x60,
-        0x20,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT3: WW:     VS 0 ~7
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT4: VCOM:   VS 0 ~7
-        0x03,
-        0x03,
-        0x00,
-        0x00,
-        0x02,  # TP0 A~D RP0
-        0x09,
-        0x09,
-        0x00,
-        0x00,
-        0x02,  # TP1 A~D RP1
-        0x03,
-        0x03,
-        0x00,
-        0x00,
-        0x02,  # TP2 A~D RP2
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP3 A~D RP3
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP4 A~D RP4
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP5 A~D RP5
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP6 A~D RP6
-        0x15,
-        0x41,
-        0xA8,
-        0x32,
-        0x30,
-        0x0A,
-    ]
+    def __init__(self, gpio_initialized=False):
+        self.epd = None
+        self.width = 122
+        self.height = 250
+        self.gpio_initialized = gpio_initialized
 
-    lut_partial_update = [  # 20 bytes
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT0: BB:     VS 0 ~7
-        0x80,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT1: BW:     VS 0 ~7
-        0x40,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT2: WB:     VS 0 ~7
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT3: WW:     VS 0 ~7
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # LUT4: VCOM:   VS 0 ~7
-        0x0A,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP0 A~D RP0
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP1 A~D RP1
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP2 A~D RP2
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP3 A~D RP3
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP4 A~D RP4
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP5 A~D RP5
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,  # TP6 A~D RP6
-        0x15,
-        0x41,
-        0xA8,
-        0x32,
-        0x30,
-        0x0A,
-    ]
+        # Display modes
+        self.current_mode = "track"  # track, volume, message
 
-    # Hardware reset
-    def reset(self):
-        epdconfig.digital_write(self.reset_pin, 1)
-        epdconfig.delay_ms(200)
-        epdconfig.digital_write(self.reset_pin, 0)
-        epdconfig.delay_ms(5)
-        epdconfig.digital_write(self.reset_pin, 1)
-        epdconfig.delay_ms(200)
+    def initialize(self):
+        """Initialize the e-ink display"""
+        try:
+            if not self.gpio_initialized:
+                result = epdconfig.module_init()
+                if result != 0:
+                    raise Exception(f"Failed to initialize display module: {result}")
 
-    def send_command(self, command):
-        epdconfig.digital_write(self.dc_pin, 0)
-        epdconfig.digital_write(self.cs_pin, 0)
-        epdconfig.spi_writebyte([command])
-        epdconfig.digital_write(self.cs_pin, 1)
+            self.epd = epd_module.EPD()
+            logger.info("E-ink display initialized")
+            return True
 
-    def send_data(self, data):
-        epdconfig.digital_write(self.dc_pin, 1)
-        epdconfig.digital_write(self.cs_pin, 0)
-        epdconfig.spi_writebyte([data])
-        epdconfig.digital_write(self.cs_pin, 1)
+        except Exception as e:
+            logger.error(f"Failed to initialize e-ink display: {e}")
+            return False
 
-    # send a lot of data
-    def send_data2(self, data):
-        epdconfig.digital_write(self.dc_pin, 1)
-        epdconfig.digital_write(self.cs_pin, 0)
-        epdconfig.spi_writebyte2(data)
-        epdconfig.digital_write(self.cs_pin, 1)
+    def clear(self):
+        """Clear the display to white"""
+        if not self.epd:
+            logger.warning("Display not initialized")
+            return
 
-    def ReadBusy(self):
-        while epdconfig.digital_read(self.busy_pin) == 1:  # 0: idle, 1: busy
-            epdconfig.delay_ms(100)
+        try:
+            self.epd.init()
+            self.epd.Clear()
+            logger.info("Display cleared")
+        except Exception as e:
+            logger.error(f"Failed to clear display: {e}")
 
-    def TurnOnDisplay(self):
-        self.send_command(0x22)
-        self.send_data(0xC7)
-        self.send_command(0x20)
-        self.ReadBusy()
+    def show_track(self, track_info):
+        """Display track information"""
+        if not self.epd:
+            if not self.initialize():
+                return
 
-    def TurnOnDisplayPart(self):
-        self.send_command(0x22)
-        self.send_data(0x0C)
-        self.send_command(0x20)
-        self.ReadBusy()
+        try:
+            # Create black image (main content)
+            black_image = Image.new("1", (self.height, self.width), 255)  # 250x122
+            draw = ImageDraw.Draw(black_image)
 
-    def init(self, update):
-        if epdconfig.module_init() != 0:
-            return -1
-        # EPD hardware init start
-        self.reset()
-        if update == self.FULL_UPDATE:
-            self.ReadBusy()
-            self.send_command(0x12)  # soft reset
-            self.ReadBusy()
+            # Try to load fonts, fall back to default
+            try:
+                font_large = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16
+                )
+                font_medium = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14
+                )
+                font_small = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12
+                )
+            except:
+                font_large = ImageFont.load_default()
+                font_medium = ImageFont.load_default()
+                font_small = ImageFont.load_default()
 
-            self.send_command(0x74)  # set analog block control
-            self.send_data(0x54)
-            self.send_command(0x7E)  # set digital block control
-            self.send_data(0x3B)
+            # Draw track info
+            y_pos = 5
 
-            self.send_command(0x01)  # Driver output control
-            self.send_data(0xF9)
-            self.send_data(0x00)
-            self.send_data(0x00)
+            # Song title (truncate if too long)
+            title = track_info.get("name", "Unknown Track")
+            if len(title) > 20:
+                title = title[:17] + "..."
+            draw.text((5, y_pos), title, font=font_large, fill=0)
+            y_pos += 20
 
-            self.send_command(0x11)  # data entry mode
-            self.send_data(0x01)
+            # Artist
+            artist = track_info.get("artist", "Unknown Artist")
+            if len(artist) > 25:
+                artist = artist[:22] + "..."
+            draw.text((5, y_pos), f"by {artist}", font=font_medium, fill=0)
+            y_pos += 18
 
-            self.send_command(0x44)  # set Ram-X address start/end position
-            self.send_data(0x00)
-            self.send_data(0x0F)  # 0x0C-->(15+1)*8=128
+            # Album
+            album = track_info.get("album", "Unknown Album")
+            if len(album) > 25:
+                album = album[:22] + "..."
+            draw.text((5, y_pos), album, font=font_small, fill=0)
+            y_pos += 20
 
-            self.send_command(0x45)  # set Ram-Y address start/end position
-            self.send_data(0xF9)  # 0xF9-->(249+1)=250
-            self.send_data(0x00)
-            self.send_data(0x00)
-            self.send_data(0x00)
+            # Progress bar
+            duration = track_info.get("duration", 0)
+            progress = track_info.get("progress", 0)
 
-            self.send_command(0x3C)  # BorderWavefrom
-            self.send_data(0x03)
+            if duration > 0:
+                bar_width = self.height - 20
+                bar_height = 6
+                progress_width = int((progress / duration) * bar_width)
 
-            self.send_command(0x2C)  # VCOM Voltage
-            self.send_data(0x55)  #
+                # Progress bar background
+                draw.rectangle(
+                    [10, y_pos, 10 + bar_width, y_pos + bar_height], outline=0
+                )
+                # Progress bar fill
+                if progress_width > 0:
+                    draw.rectangle(
+                        [10, y_pos, 10 + progress_width, y_pos + bar_height], fill=0
+                    )
 
-            self.send_command(0x03)
-            self.send_data(self.lut_full_update[70])
+                y_pos += 15
 
-            self.send_command(0x04)  #
-            self.send_data(self.lut_full_update[71])
-            self.send_data(self.lut_full_update[72])
-            self.send_data(self.lut_full_update[73])
+                # Time display
+                progress_min = progress // 60000
+                progress_sec = (progress % 60000) // 1000
+                duration_min = duration // 60000
+                duration_sec = (duration % 60000) // 1000
 
-            self.send_command(0x3A)  # Dummy Line
-            self.send_data(self.lut_full_update[74])
-            self.send_command(0x3B)  # Gate time
-            self.send_data(self.lut_full_update[75])
+                time_text = f"{progress_min}:{progress_sec:02d} / {duration_min}:{duration_sec:02d}"
+                draw.text((10, y_pos), time_text, font=font_small, fill=0)
 
-            self.send_command(0x32)
-            for count in range(70):
-                self.send_data(self.lut_full_update[count])
+            # Create red/yellow image (for highlights - empty for now)
+            red_image = Image.new("1", (self.height, self.width), 255)
 
-            self.send_command(0x4E)  # set RAM x address count to 0
-            self.send_data(0x00)
-            self.send_command(0x4F)  # set RAM y address count to 0X127
-            self.send_data(0xF9)
-            self.send_data(0x00)
-            self.ReadBusy()
-        else:
-            self.send_command(0x2C)  # VCOM Voltage
-            self.send_data(0x26)
+            # Display the images
+            self.epd.init()
+            self.epd.display(
+                self.epd.getbuffer(black_image), self.epd.getbuffer(red_image)
+            )
 
-            self.ReadBusy()
+            self.current_mode = "track"
+            logger.info(f"Displayed track: {title}")
 
-            self.send_command(0x32)
-            for count in range(70):
-                self.send_data(self.lut_partial_update[count])
+        except Exception as e:
+            logger.error(f"Failed to show track: {e}")
 
-            self.send_command(0x37)
-            self.send_data(0x00)
-            self.send_data(0x00)
-            self.send_data(0x00)
-            self.send_data(0x00)
-            self.send_data(0x40)
-            self.send_data(0x00)
-            self.send_data(0x00)
+    def show_volume(self, volume_level):
+        """Display volume level"""
+        if not self.epd:
+            if not self.initialize():
+                return
 
-            self.send_command(0x22)
-            self.send_data(0xC0)
-            self.send_command(0x20)
-            self.ReadBusy()
+        try:
+            black_image = Image.new("1", (self.height, self.width), 255)
+            draw = ImageDraw.Draw(black_image)
 
-            self.send_command(0x3C)  # BorderWavefrom
-            self.send_data(0x01)
-        return 0
+            try:
+                font_large = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24
+                )
+                font_medium = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16
+                )
+            except:
+                font_large = ImageFont.load_default()
+                font_medium = ImageFont.load_default()
 
-    def getbuffer(self, image):
-        if self.width % 8 == 0:
-            linewidth = int(self.width / 8)
-        else:
-            linewidth = int(self.width / 8) + 1
+            # Volume text
+            draw.text((50, 20), "Volume", font=font_large, fill=0)
 
-        buf = [0xFF] * (linewidth * self.height)
-        image_monocolor = image.convert("1")
-        imwidth, imheight = image_monocolor.size
-        pixels = image_monocolor.load()
+            # Volume bar
+            bar_width = self.height - 40
+            bar_height = 20
+            filled_width = int(bar_width * (volume_level / 100))
 
-        if imwidth == self.width and imheight == self.height:
-            logger.debug("Vertical")
-            for y in range(imheight):
-                for x in range(imwidth):
-                    if pixels[x, y] == 0:
-                        x = imwidth - x
-                        buf[int(x / 8) + y * linewidth] &= ~(0x80 >> (x % 8))
-        elif imwidth == self.height and imheight == self.width:
-            logger.debug("Horizontal")
-            for y in range(imheight):
-                for x in range(imwidth):
-                    newx = y
-                    newy = self.height - x - 1
-                    if pixels[x, y] == 0:
-                        newy = imwidth - newy - 1
-                        buf[int(newx / 8) + newy * linewidth] &= ~(0x80 >> (y % 8))
-        return buf
+            y_pos = 60
 
-    def display(self, image):
-        self.send_command(0x24)
-        self.send_data2(image)
-        self.TurnOnDisplay()
+            # Volume bar background
+            draw.rectangle([20, y_pos, 20 + bar_width, y_pos + bar_height], outline=0)
+            # Volume bar fill
+            if filled_width > 0:
+                draw.rectangle(
+                    [20, y_pos, 20 + filled_width, y_pos + bar_height], fill=0
+                )
 
-    def displayPartial(self, image):
-        if self.width % 8 == 0:
-            linewidth = int(self.width / 8)
-        else:
-            linewidth = int(self.width / 8) + 1
+            # Volume percentage
+            draw.text((90, y_pos + 30), f"{volume_level}%", font=font_medium, fill=0)
 
-        buf = [0x00] * self.height * linewidth
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                buf[i + j * linewidth] = ~image[i + j * linewidth]
+            red_image = Image.new("1", (self.height, self.width), 255)
 
-        self.send_command(0x24)
-        self.send_data2(image)
+            self.epd.init()
+            self.epd.display(
+                self.epd.getbuffer(black_image), self.epd.getbuffer(red_image)
+            )
 
-        self.send_command(0x26)
-        self.send_data2(buf)
-        self.TurnOnDisplayPart()
+            self.current_mode = "volume"
+            logger.info(f"Displayed volume: {volume_level}%")
 
-    def displayPartBaseImage(self, image):
-        self.send_command(0x24)
-        self.send_data2(image)
+        except Exception as e:
+            logger.error(f"Failed to show volume: {e}")
 
-        self.send_command(0x26)
-        self.send_data2(image)
-        self.TurnOnDisplay()
+    def show_message(self, title, message):
+        """Display a simple message"""
+        if not self.epd:
+            if not self.initialize():
+                return
 
-    def Clear(self, color=0xFF):
-        if self.width % 8 == 0:
-            linewidth = int(self.width / 8)
-        else:
-            linewidth = int(self.width / 8) + 1
-        # logger.debug(linewidth)
+        try:
+            black_image = Image.new("1", (self.height, self.width), 255)
+            draw = ImageDraw.Draw(black_image)
 
-        buf = [0x00] * self.height * linewidth
-        for j in range(0, self.height):
-            for i in range(0, linewidth):
-                buf[i + j * linewidth] = color
+            try:
+                font_large = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18
+                )
+                font_medium = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14
+                )
+            except:
+                font_large = ImageFont.load_default()
+                font_medium = ImageFont.load_default()
 
-        self.send_command(0x24)
-        self.send_data2(buf)
+            # Title
+            draw.text((10, 30), title, font=font_large, fill=0)
 
-        # self.send_command(0x26)
-        # for j in range(0, self.height):
-        # for i in range(0, linewidth):
-        # self.send_data(color)
+            # Message (wrap if needed)
+            lines = []
+            words = message.split(" ")
+            current_line = ""
 
-        self.TurnOnDisplay()
+            for word in words:
+                test_line = current_line + (" " if current_line else "") + word
+                if len(test_line) <= 25:  # Approximate character limit
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = word
+
+            if current_line:
+                lines.append(current_line)
+
+            y_pos = 55
+            for line in lines[:3]:  # Max 3 lines
+                draw.text((10, y_pos), line, font=font_medium, fill=0)
+                y_pos += 18
+
+            red_image = Image.new("1", (self.height, self.width), 255)
+
+            self.epd.init()
+            self.epd.display(
+                self.epd.getbuffer(black_image), self.epd.getbuffer(red_image)
+            )
+
+            self.current_mode = "message"
+            logger.info(f"Displayed message: {title}")
+
+        except Exception as e:
+            logger.error(f"Failed to show message: {e}")
+
+    def toggle_mode(self):
+        """Toggle between display modes (for menu button)"""
+        # This can be expanded based on your needs
+        logger.info(f"Display mode toggle (current: {self.current_mode})")
 
     def sleep(self):
-        # self.send_command(0x22) #POWER OFF
-        # self.send_data(0xC3)
-        # self.send_command(0x20)
+        """Put display to sleep"""
+        if self.epd:
+            try:
+                self.epd.sleep()
+                logger.info("Display put to sleep")
+            except Exception as e:
+                logger.error(f"Failed to put display to sleep: {e}")
 
-        self.send_command(0x10)  # enter deep sleep
-        self.send_data(0x03)
-        epdconfig.delay_ms(2000)
-        epdconfig.module_exit()
+    def cleanup(self):
+        """Clean up display resources"""
+        try:
+            if self.epd:
+                self.epd.sleep()
+            if not self.gpio_initialized:
+                epdconfig.module_exit()
+            logger.info("Display cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during display cleanup: {e}")
