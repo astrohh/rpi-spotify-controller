@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
 Clear E-ink Display Script
-Simple utility to clear the LoFi Pi e-ink display
+Simple utility to clear the LoFi Pi e-ink display to solid white
+This prevents image burn-in during storage
 """
 
 import sys
+from PIL import Image
 import RPi.GPIO as GPIO
 from eink_display import EInkDisplay
 
 
 def clear_display():
     """Clear the e-ink display to blank/white"""
-    print("Clearing e-ink display...")
+    print("Clearing e-ink display to white...")
 
     display = None
     try:
@@ -25,9 +27,36 @@ def clear_display():
         display = EInkDisplay(gpio_initialized=gpio_initialized)
         print("E-ink display initialized")
 
-        # Clear the display
-        display.clear()
-        print("Display cleared successfully!")
+        # Initialize the display hardware
+        if not display.initialize():
+            print("Failed to initialize display hardware")
+            return False
+
+        # Check if EPD is properly initialized
+        if not display.epd:
+            print("EPD hardware not properly initialized")
+            return False
+
+        # Create completely white images for both black and red layers
+        # E-ink displays use 1-bit images where 255 = white, 0 = black
+        # Display dimensions: 250x122 (height x width)
+        white_image_black = Image.new(
+            "1", (display.height, display.width), 255
+        )  # Solid white
+        white_image_red = Image.new(
+            "1", (display.height, display.width), 255
+        )  # Solid white
+
+        print("Created white images for display layers")
+
+        # Display the white images to clear any burn-in
+        display.epd.init()
+        display.epd.display(
+            display.epd.getbuffer(white_image_black),
+            display.epd.getbuffer(white_image_red),
+        )
+
+        print("Display set to solid white - safe for storage!")
 
     except Exception as e:
         print(f"Error clearing display: {e}")
