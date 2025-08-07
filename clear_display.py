@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Clear E-ink Display Script
-Simple utility to clear the LoFi Pi e-ink display to solid white
-This prevents image burn-in during storage
+Clear E-ink Display - Prevents burn-in during storage
 """
 
 import sys
@@ -13,62 +11,34 @@ from eink_display import EInkDisplay
 
 def clear_display():
     """Clear the e-ink display to blank/white"""
-    print("Clearing e-ink display to white...")
+    print("Clearing display...")
 
-    display = None
     try:
-        # Initialize GPIO
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
-        gpio_initialized = True
-        print("GPIO initialized")
 
-        # Initialize display
-        display = EInkDisplay(gpio_initialized=gpio_initialized)
-        print("E-ink display initialized")
-
-        # Initialize the display hardware
-        if not display.initialize():
-            print("Failed to initialize display hardware")
+        display = EInkDisplay(gpio_initialized=True)
+        if not display.initialize() or not display.epd:
+            print("Display initialization failed")
             return False
 
-        # Check if EPD is properly initialized
-        if not display.epd:
-            print("EPD hardware not properly initialized")
-            return False
+        # Create white images (255 = white for 1-bit images)
+        white_black = Image.new("1", (display.height, display.width), 255)
+        white_red = Image.new("1", (display.height, display.width), 255)
 
-        # Create completely white images for both black and red layers
-        # E-ink displays use 1-bit images where 255 = white, 0 = black
-        # Display dimensions: 250x122 (height x width)
-        white_image_black = Image.new(
-            "1", (display.height, display.width), 255
-        )  # Solid white
-        white_image_red = Image.new(
-            "1", (display.height, display.width), 255
-        )  # Solid white
-
-        print("Created white images for display layers")
-
-        # Display the white images to clear any burn-in
         display.epd.init()
         display.epd.display(
-            display.epd.getbuffer(white_image_black),
-            display.epd.getbuffer(white_image_red),
+            display.epd.getbuffer(white_black), display.epd.getbuffer(white_red)
         )
-
-        print("Display set to solid white - safe for storage!")
+        print("Display cleared!")
+        return True
 
     except Exception as e:
-        print(f"Error clearing display: {e}")
+        print(f"Error: {e}")
         return False
-
     finally:
-        # Clean up GPIO
         try:
-            if display:
-                display.cleanup()
             GPIO.cleanup()
-            print("GPIO cleaned up")
         except:
             pass
 
@@ -76,12 +46,9 @@ def clear_display():
 
 
 if __name__ == "__main__":
-    print("LoFi Pi Display Cleaner")
-    print("=" * 30)
-
     if clear_display():
-        print("Display cleared successfully!")
+        print("Success!")
         sys.exit(0)
     else:
-        print("Failed to clear display!")
+        print("Failed!")
         sys.exit(1)
