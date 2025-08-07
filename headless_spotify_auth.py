@@ -10,7 +10,7 @@ import base64
 import requests
 import urllib.parse
 from pathlib import Path
-from config import Configt Config
+from config import Config
 
 
 class HeadlessSpotifyAuth:
