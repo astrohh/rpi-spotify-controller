@@ -6,7 +6,7 @@ Simple utility to clear the LoFi Pi e-ink display
 
 import sys
 import RPi.GPIO as GPIO
-from eink_display import EInkDisplayplay import EInkDisplay
+from eink_display import EInkDisplay
 
 
 def clear_display():
