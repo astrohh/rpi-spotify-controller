@@ -41,6 +41,29 @@ A minimalist Spotify controller using a Raspberry Pi Zero with e-ink display, me
 - VCC → 3.3V (Pin 1)
 - GND → GND (Pin 9)
 
+## 🚀 Quick Start with Automated Token Management
+
+**New!** This project now includes a fully automated token management system that eliminates manual token refresh operations.
+
+### 1. Install and Setup
+
+```bash
+# Install dependencies and setup automation
+./setup_auto_tokens.sh
+
+# One-time authentication (use any device with a browser)
+python3 headless_spotify_auth.py
+```
+
+### 2. Start Automatic Management
+
+```bash
+sudo systemctl enable lofi-pi-token-manager
+sudo systemctl start lofi-pi-token-manager
+```
+
+**That's it!** Your LoFi Pi will now maintain Spotify connectivity automatically, refreshing tokens before they expire and recovering from authentication failures without manual intervention.
+
 ## Software Setup
 
 1. Install Raspberry Pi OS Lite on your Pi Zero
@@ -51,30 +74,37 @@ A minimalist Spotify controller using a Raspberry Pi Zero with e-ink display, me
    ```
 4. Configure your Spotify API credentials in `config.py`
 5. Connect to WiFi
-6. **Authenticate with Spotify** (for headless setup):
+6. **Run the automated setup**:
    ```bash
-   python headless_spotify_auth.py
+   ./setup_auto_tokens.sh
    ```
-   Follow the instructions to authenticate using any device with a browser.
 
-## Authentication Management
+## 🔄 Automated Token Management
 
-This project includes automated token management to minimize manual intervention:
+This project includes a sophisticated automated token management system:
 
-- **Automatic token refresh**: Tokens are automatically refreshed when they expire
-- **Headless authentication**: Re-authenticate without needing a browser on the Pi
-- **Token monitoring**: Optional monitoring service to maintain token health
-- **Graceful degradation**: System continues running even when authentication fails
+- **🔄 Automatic refresh**: Tokens are refreshed 10 minutes before expiry
+- **🛡️ Multiple fallback strategies**: Client credentials, backup tokens, device discovery
+- **📊 Continuous monitoring**: Background service + cron job redundancy
+- **🔧 Self-healing**: Automatic recovery from network and API errors
+- **📱 Headless friendly**: Re-authenticate using any device with a browser
+- **📋 Comprehensive logging**: Full audit trail of all token operations
 
-### Quick Auth Fix
-
-If you see "Auth Failed" on the display:
+### Quick Status Check
 
 ```bash
-python headless_spotify_auth.py
+python3 auto_token_manager.py --status
 ```
 
-See `docs/token_management.md` for detailed information about the authentication system.
+### Emergency Re-authentication
+
+If you ever see "Auth Failed":
+
+```bash
+python3 headless_spotify_auth.py
+```
+
+See `docs/automated_token_system.md` for comprehensive documentation.
 
 ## Features
 

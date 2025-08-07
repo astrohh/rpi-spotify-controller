@@ -13,7 +13,7 @@ import RPi.GPIO as GPIO
 from pathlib import Path
 
 from config import Config
-from controls import Controls
+from controls import Controlsols
 
 # Import custom modules
 from spotify_api import SpotifyAPI
@@ -85,8 +85,18 @@ class LoFiPi:
 
     def update_loop(self):
         """Main update loop - runs in background thread"""
+        token_check_counter = 0
+        token_check_interval = 120  # Check tokens every 2 minutes (120 * 5s = 600s)
+
         while self.running:
             try:
+                # Periodic token health check
+                if token_check_counter >= token_check_interval:
+                    self._check_token_health()
+                    token_check_counter = 0
+                else:
+                    token_check_counter += 1
+
                 # Get current track info from Spotify
                 current_playback = self.spotify.get_current_playback()
 
@@ -138,10 +148,41 @@ class LoFiPi:
 
             except Exception as e:
                 print(f"Error in update loop: {e}")
-                self.display.show_message("Error", "Check connection")
+
+                # Check if it's an authentication error
+                if "401" in str(e) or "authentication" in str(e).lower():
+                    print("Authentication error detected, attempting token refresh...")
+                    if self.spotify.refresh_access_token():
+                        print("Token refresh successful, continuing...")
+                        self.display.show_message("Reconnected", "")
+                    else:
+                        print("Token refresh failed")
+                        self.display.show_message("Auth Error", "Retrying...")
+                else:
+                    self.display.show_message("Error", "Check connection")
 
             # Wait before next update
             time.sleep(self.config.SPOTIFY_UPDATE_INTERVAL / 1000)
+
+    def _check_token_health(self):
+        """Periodically check token health and refresh if needed"""
+        try:
+            # Check if tokens are expiring soon
+            token_file = Path("spotify_tokens.json")
+            if token_file.exists():
+                with open(token_file, "r") as f:
+                    tokens = json.load(f)
+                    expires_at = tokens.get("expires_at", 0)
+                    current_time = time.time()
+                    time_until_expiry = expires_at - current_time
+
+                    # Refresh if expiring in next 10 minutes
+                    if time_until_expiry <= 600 and time_until_expiry > 0:
+                        print("Token expiring soon, refreshing proactively...")
+                        self.spotify.refresh_access_token()
+
+        except Exception as e:
+            print(f"Error during token health check: {e}")
 
     def on_button_press(self, button_id):
         """Handle button press events"""
