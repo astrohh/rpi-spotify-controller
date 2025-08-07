@@ -7,7 +7,7 @@ import json
 import time
 import base64
 import requests
-from pathlib import Pathport Path
+from pathlib import Path
 
 
 class SpotifyAPI:
