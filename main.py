@@ -65,6 +65,9 @@ class LoFiPi:
         self.is_playing = False
         self.volume = 50
         self.running = True
+        self.last_progress_update = 0
+        self.base_progress = 0
+        self.last_display_update = 0
 
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -72,6 +75,11 @@ class LoFiPi:
 
         # Start background update thread
         self.update_thread = threading.Thread(target=self.update_loop, daemon=True)
+
+        # Start display update thread for time updates
+        self.display_thread = threading.Thread(
+            target=self.display_update_loop, daemon=True
+        )
 
         print("LoFi Pi initialized successfully!")
 
@@ -123,12 +131,20 @@ class LoFiPi:
                             "progress": current_playback.get("progress_ms", 0),
                         }
 
+                        # Update progress tracking
+                        self.base_progress = current_playback.get("progress_ms", 0)
+                        self.last_progress_update = time.time()
+
                         print(
                             f"Now playing: {self.current_track['name']} by {self.current_track['artist']}"
                         )
 
                         # Update display with new track
                         self.display.show_track(self.current_track)
+                    else:
+                        # Same track, just update progress tracking
+                        self.base_progress = current_playback.get("progress_ms", 0)
+                        self.last_progress_update = time.time()
 
                     # Update playback state
                     self.is_playing = current_playback.get("is_playing", False)
@@ -163,6 +179,39 @@ class LoFiPi:
 
             # Wait before next update
             time.sleep(self.config.SPOTIFY_UPDATE_INTERVAL / 1000)
+
+    def display_update_loop(self):
+        """Display update loop - updates progress time more frequently"""
+        while self.running:
+            try:
+                if self.current_track and self.is_playing:
+                    # Calculate current progress based on elapsed time
+                    elapsed_time = time.time() - self.last_progress_update
+                    current_progress = self.base_progress + (
+                        elapsed_time * 1000
+                    )  # Convert to ms
+
+                    # Don't exceed track duration
+                    if current_progress > self.current_track["duration"]:
+                        current_progress = self.current_track["duration"]
+
+                    # Update the track info with current progress
+                    updated_track = self.current_track.copy()
+                    updated_track["progress"] = int(current_progress)
+
+                    # Only update display every few seconds to avoid wear on e-ink
+                    current_time = time.time()
+                    if (
+                        current_time - self.last_display_update >= 3
+                    ):  # Update display every 3 seconds
+                        self.display.show_track(updated_track)
+                        self.last_display_update = current_time
+
+            except Exception as e:
+                print(f"Error in display update loop: {e}")
+
+            # Update display more frequently than Spotify API calls
+            time.sleep(self.config.DISPLAY_REFRESH_INTERVAL / 1000)
 
     def _check_token_health(self):
         """Periodically check token health and refresh if needed"""
@@ -316,8 +365,9 @@ class LoFiPi:
 
     def run_normal_mode(self):
         """Run in normal mode with Spotify authentication"""
-        # Start background update thread
+        # Start background update threads
         self.update_thread.start()
+        self.display_thread.start()
 
         # Main control loop
         try:
