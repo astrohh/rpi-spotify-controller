@@ -6,7 +6,7 @@ Wraps the Waveshare 2.13" B/W/Red display driver for easier use
 import os
 import sys
 import time
-import loggingimport logging
+import logging
 
 # Add lib directory to path
 lib_dir = os.path.join(os.path.dirname(__file__), "lib")
@@ -16,7 +16,7 @@ if lib_dir not in sys.path:
 # Now import the modules directly
 import epdconfig
 import epd_2in13b as epd_module
-from PIL import Image, ImageDraw, ImageFontmageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
